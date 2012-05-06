@@ -1,0 +1,131 @@
+#!/bin/bash
+
+USERNAME="admin"
+FILES_TO_CLEANUP=()
+
+function Usage ()
+{
+    echo ""
+    echo "USAGE: "
+    echo "    PushPlaylists [-?dpsu]"
+    echo ""
+    echo "OPTIONS:"
+    echo "    -d  location of music directory"
+    echo "    -p  address of phone"
+    echo "    -s  SSL port"
+    echo "    -u  username for logging in to phone"
+    echo "    -?  this usage information"
+    echo ""
+    echo "EXAMPLE:"
+    echo "    PushPlaylists -d ~/Music -p 192.168.1.2 -u admin MyPlaylist.m3u"
+    echo ""
+    exit $E_OPTERROR    # Exit and explain usage, if no argument(s) given.
+}
+
+while getopts "d:p:s:u:?" Option
+do
+    case $Option in
+        d    ) DIRECTORY_TO_RSYNC=$OPTARG;;
+        p    ) PHONE_ADDRESS=$OPTARG;;
+        s    ) SSL_PORT=$OPTARG;;
+        u    ) USERNAME=$OPTARG;;
+        ?    ) Usage
+               exit 0;;
+    esac
+done
+
+#echo "Music directory: $DIRECTORY_TO_RSYNC"
+#echo "Phone address: $PHONE_ADDRESS"
+#echo "Username: $USERNAME"
+
+if [ "$DIRECTORY_TO_RSYNC" = "" ]
+then
+    echo "Directory (option -d) not specified."
+    Usage
+    exit 0
+fi
+
+if [ "$PHONE_ADDRESS" = "" ]
+then
+    echo "Phone address (option -p) not specified."
+    Usage
+    exit 0
+fi
+
+if [ "$SSL_PORT" = "" ]
+then
+    echo "SSL port (option -s) not specified."
+    Usage
+    exit 0
+fi
+
+if [ "$USERNAME" = "" ]
+then
+    echo "Username (option -u) not specified."
+    Usage
+    exit 0
+fi
+
+function GetPlaylistType ()
+{
+        BASE_FILENAME=$(basename "$1")
+        PLAYLIST_TYPE=$(echo "${BASE_FILENAME##*.}" | tr -s '[:lower:]' '[:upper:]')
+}
+
+function ProcessM3uPlaylist ()
+{
+        BASENAME=$(basename "$1")
+        echo "$BASENAME" >> "$MASTERFILE"
+        cat "$1" >> "$MASTERFILE"
+}
+
+function ProcessPlsPlaylist ()
+{
+        # Create M3U from PLS
+        BASENAME=$(basename "$1")
+        NOEXTENSION="${BASENAME%.*}"
+        TEMPPLAYLISTFILE="/tmp/$NOEXTENSION.m3u"
+        AddToCleanup "$TEMPPLAYLISTFILE"
+        AddToCleanup "$DIRECTORY_TO_RSYNC/$NOEXTENSION.m3u"
+        echo "#EXTM3U" > "$TEMPPLAYLISTFILE"
+        awk -F= '$0 ~ /^File/ { print $2 }' "$1" >> "$TEMPPLAYLISTFILE"
+        echo "$NOEXTENSION.m3u" >> "$MASTERFILE"
+        cat "$TEMPPLAYLISTFILE" >> "$MASTERFILE"
+        cp "$TEMPPLAYLISTFILE" "$DIRECTORY_TO_RSYNC/$NOEXTENSION.m3u"
+}
+
+function AddToCleanup ()
+{
+    FILES_TO_CLEANUP+=("${1}")
+}
+
+# Create temporary file
+MASTERFILE="/tmp/$(basename $0).$$.tmp"
+AddToCleanup $MASTERFILE
+
+shift $((OPTIND-1))
+
+for PLAYLIST in "$@"
+do
+        echo "Processing playlist: $PLAYLIST"
+        GetPlaylistType "$PLAYLIST"
+        case "$PLAYLIST_TYPE" in
+            M3U ) ProcessM3uPlaylist "$PLAYLIST";;
+            PLS ) ProcessPlsPlaylist "$PLAYLIST";;
+            *   ) echo "Unknown playlist type: $PLAYLIST_TYPE.";;
+        esac
+done
+
+#cat $MASTERFILE
+
+echo ""
+echo "About to sync..."
+echo ""
+
+rsync -avu --delete -e "ssh -l $USERNAME -p $SSL_PORT" --files-from="$MASTERFILE" "$DIRECTORY_TO_RSYNC" "$USERNAME@$PHONE_ADDRESS:/mnt/sdcard/Music"
+
+for CLEANUP_NAME in "${FILES_TO_CLEANUP[@]}"
+do
+    echo "Cleaning up: $CLEANUP_NAME"
+    rm "$CLEANUP_NAME"
+done

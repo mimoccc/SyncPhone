@@ -1,0 +1,73 @@
+#!/bin/bash
+
+USERNAME="admin"
+
+function Usage ()
+{
+    echo ""
+    echo "USAGE: "
+    echo "    PushFolder [-?dpstu]"
+    echo ""
+    echo "OPTIONS:"
+    echo "    -d  location of local directory"
+    echo "    -p  address of phone"
+    echo "    -s  SSL port"
+    echo "    -t  location of phone directory (relative to /mnt/sdcard/)"
+    echo "    -u  username for logging in to phone"
+    echo "    -?  this usage information"
+    echo ""
+    echo "EXAMPLE:"
+    echo "    PushFolder -d ~/Ringtones -t Ringtomes -p 192.168.1.2 -u admin"
+    echo ""
+    exit $E_OPTERROR    # Exit and explain usage, if no argument(s) given.
+}
+
+while getopts "d:p:s:t:u:?" Option
+do
+    case $Option in
+        d    ) DIRECTORY_TO_RSYNC=$OPTARG;;
+        p    ) PHONE_ADDRESS=$OPTARG;;
+        s    ) SSL_PORT=$OPTARG;;
+        t    ) PHONE_DIRECTORY_TO_RSYNC=$OPTARG;;
+        u    ) USERNAME=$OPTARG;;
+        ?    ) Usage
+               exit 0;;
+    esac
+done
+
+if [ "$DIRECTORY_TO_RSYNC" = "" ]
+then
+    echo "Directory (option -d) not specified."
+    Usage
+    exit 0
+fi
+
+if [ "$PHONE_ADDRESS" = "" ]
+then
+    echo "Phone address (option -p) not specified."
+    Usage
+    exit 0
+fi
+
+if [ "$SSL_PORT" = "" ]
+then
+    echo "SSL port (option -s) not specified."
+    Usage
+    exit 0
+fi
+
+if [ "$PHONE_DIRECTORY_TO_RSYNC" = "" ]
+then
+    echo "Phone directory (option -t) not specified."
+    Usage
+    exit 0
+fi
+
+if [ "$USERNAME" = "" ]
+then
+    echo "Username (option -u) not specified."
+    Usage
+    exit 0
+fi
+
+rsync -avu --delete -e "ssh -l $USERNAME -p $SSL_PORT" "$DIRECTORY_TO_RSYNC" "$USERNAME@$PHONE_ADDRESS:/mnt/sdcard/$PHONE_DIRECTORY_TO_RSYNC"
