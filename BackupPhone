@@ -1,0 +1,20 @@
+#!/bin/bash
+if [ "$1" == "" ]; then
+	FOLDER="."
+else
+	FOLDER="$1"
+fi
+
+read -p "Ensure the phone is connected and press <ENTER>: "
+today=$(date +"%Y-%m-%d")
+filename="$FOLDER/Backup-$today.ab"
+echo "Backup Filename: $filename"
+if [ -f "$filename" ]; then
+	rm "$filename"
+fi
+
+date
+echo adb backup -apk -shared -all -f "$filename"
+date
+
+echo "Done."
